@@ -15,25 +15,8 @@ const { spawn } = require("child_process");
 const PUBLIC_PORT = parseInt(process.env.PORT || "5173", 10);
 const METRO_PORT = parseInt(process.env.METRO_PORT || "19006", 10);
 
-// Start Expo dev server on the Metro port
-const expo = spawn(
-  "npx",
-  ["expo", "start", "--web", "--port", String(METRO_PORT), "--host", "0.0.0.0"],
-  {
-    stdio: "inherit",
-    env: { ...process.env },
-  }
-);
-
-expo.on("error", (err) => {
-  console.error("[health-proxy] Failed to start Expo:", err);
-  process.exit(1);
-});
-
-expo.on("exit", (code) => {
-  console.log(`[health-proxy] Expo exited with code ${code}`);
-  process.exit(code ?? 1);
-});
+// Start the health check server FIRST, before anything else
+let expoProcess = null;
 
 // Create the proxy server
 const server = http.createServer((req, res) => {
@@ -100,8 +83,27 @@ server.on("upgrade", (req, socket, head) => {
 
 server.listen(PUBLIC_PORT, "0.0.0.0", () => {
   console.log(`[health-proxy] Listening on port ${PUBLIC_PORT}, proxying to Metro on ${METRO_PORT}`);
+
+  // Start Expo AFTER the health check server is listening
+  expoProcess = spawn(
+    "npx",
+    ["expo", "start", "--web", "--port", String(METRO_PORT), "--host", "0.0.0.0"],
+    {
+      stdio: "inherit",
+      env: { ...process.env },
+    }
+  );
+
+  expoProcess.on("error", (err) => {
+    console.error("[health-proxy] Failed to start Expo:", err);
+  });
+
+  expoProcess.on("exit", (code) => {
+    console.log(`[health-proxy] Expo exited with code ${code}`);
+    process.exit(code ?? 1);
+  });
 });
 
 // Forward signals to Expo
-process.on("SIGTERM", () => expo.kill("SIGTERM"));
-process.on("SIGINT", () => expo.kill("SIGINT"));
+process.on("SIGTERM", () => expoProcess && expoProcess.kill("SIGTERM"));
+process.on("SIGINT", () => expoProcess && expoProcess.kill("SIGINT"));
