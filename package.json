@@ -5,6 +5,7 @@
   "scripts": {
     "start": "expo start",
     "web": "expo start --web --port 5173",
+    "dev": "node health-proxy.js",
     "android": "expo start --android",
     "ios": "expo start --ios"
   },
